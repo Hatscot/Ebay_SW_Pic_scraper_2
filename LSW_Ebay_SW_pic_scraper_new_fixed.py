@@ -4,7 +4,10 @@ import pandas as pd
 import requests
 import re
 import asyncio
-from pyppeteer import launch
+from pyppeteer import launch, chromium_downloader
+import stat
+import subprocess
+import zipfile
 
 # ----------------------------------------
 # Configuration
@@ -27,6 +30,36 @@ ORIGINAL_BTN = "button[aria-label='Originalangebot ansehen']"
 # ----------------------------------------
 browser = None
 
+
+def ensure_chromium():
+    exe_path = chromium_downloader.chromium_executable()
+    if os.path.exists(exe_path):
+        os.chmod(exe_path, os.stat(exe_path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        return exe_path
+
+    download_url = chromium_downloader.get_url()
+    dest_dir = chromium_downloader.DOWNLOADS_FOLDER / chromium_downloader.REVISION
+    os.makedirs(dest_dir, exist_ok=True)
+    zip_path = dest_dir / 'chrome.zip'
+
+    # download via requests which respects proxy settings
+    with requests.get(download_url, stream=True) as r:
+        r.raise_for_status()
+        with open(zip_path, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+
+    # extract
+    with zipfile.ZipFile(zip_path) as zf:
+        zf.extractall(dest_dir)
+    os.remove(zip_path)
+
+    # ensure executable permission
+    os.chmod(exe_path, os.stat(exe_path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    return exe_path
+
 # ----------------------------------------
 # Functions
 # ----------------------------------------
@@ -47,7 +80,7 @@ def save_image(url, folder):
 
 
 async def extract_images_for_item(page, item_url, sw_code):
-    await page.goto(item_url)
+    await page.goto(item_url, {'waitUntil': 'networkidle2', 'timeout': 60000})
     # click original offer if present
     try:
         btn = await page.querySelector(ORIGINAL_BTN)
@@ -95,8 +128,19 @@ async def extract_images_for_item(page, item_url, sw_code):
 
 async def download_images_pyppeteer(df):
     global browser
-    browser = await launch(headless=True, args=['--no-sandbox'])
+    exec_path = ensure_chromium()
+    browser = await launch(
+        executablePath=exec_path,
+        headless=True,
+        args=[
+            '--no-sandbox',
+            '--disable-gpu',
+            '--ignore-certificate-errors',
+            f"--proxy-server={os.environ.get('http_proxy', '')}"
+        ]
+    )
     page = await browser.newPage()
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36')
     downloaded_any = False
 
     for idx, row in df[df['Downloaded'] == 0].iterrows():
