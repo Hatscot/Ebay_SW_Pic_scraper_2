@@ -25,5 +25,9 @@ internet access is available.
 python LSW_Ebay_SW_pic_scraper_new_fixed.py
 ```
 
+To rotate proxies, set the environment variable `SCRAPER_PROXIES` to a
+comma-separated list of proxy URLs before running the script. Each
+request will use the next proxy in the list.
+
 The CSV file must contain the columns `SW_Code`, `Item_Link` and `Downloaded`.
 Newly downloaded images will update the `Downloaded` column.
