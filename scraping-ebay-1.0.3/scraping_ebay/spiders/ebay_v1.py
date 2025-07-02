@@ -265,18 +265,20 @@ class EbaySpider(scrapy.Spider):
 
 		# spects
 		spects={}
-		spectdiv=response.xpath('//div[@class="ux-layout-section-module"]')[0] 
-		allrows=spectdiv.xpath(".//div[@class='ux-layout-section__row']")
-		for row in allrows: 
-			labels=row.xpath(".//div[@class='ux-labels-values__labels']") 
-			values=row.xpath(".//div[@class='ux-labels-values__values']") 
-			if (len(labels)==len(values)): 
-				for i in range(0,len(labels)): 
-					name=(labels[i].xpath('.//*/text()').extract_first()) 
-					val=(values[i].xpath('.//*/text()').extract_first())
-					spects[name]=val
-					# data[name]=val
-		
+		spectdiv = response.xpath("//div[@class='ux-layout-section-module']").get()
+		if spectdiv:
+			allrows = response.xpath("//div[@class='ux-layout-section-module']//div[@class='ux-layout-section__row']")
+			for row in allrows:
+				labels=row.xpath(".//div[@class='ux-labels-values__labels']")
+				values=row.xpath(".//div[@class='ux-labels-values__values']")
+				if (len(labels)==len(values)):
+					for i in range(0,len(labels)):
+						name=(labels[i].xpath('.//*/text()').extract_first())
+						val=(values[i].xpath('.//*/text()').extract_first())
+						spects[name]=val
+						# data[name]=val
+		else:
+			self.logger.warning("No product specs found for %s", response.url)
 		
 
 
