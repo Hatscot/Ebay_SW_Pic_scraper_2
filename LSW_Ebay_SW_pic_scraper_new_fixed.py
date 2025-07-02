@@ -18,6 +18,12 @@ download_images = True
 path_links_csv = os.path.join("Ebay", "EBay_links_output.csv")
 image_root = os.path.join("Ebay", "Ebaydata", "images")
 
+# List of proxies to rotate through. Set the environment variable
+# `SCRAPER_PROXIES` to a comma separated list of proxy URLs to override.
+proxy_env = os.environ.get("SCRAPER_PROXIES", "")
+PROXIES = [p.strip() for p in proxy_env.split(',') if p.strip()]
+proxy_index = 0
+
 # CSS selectors for images and original offer button
 CANONICAL_SELECTOR = "link[rel='canonical']"
 OG_IMAGE_META = "meta[property='og:image']"
@@ -127,20 +133,9 @@ async def extract_images_for_item(page, item_url, sw_code):
 
 
 async def download_images_pyppeteer(df):
-    global browser
+    global browser, proxy_index
     exec_path = ensure_chromium()
-    browser = await launch(
-        executablePath=exec_path,
-        headless=True,
-        args=[
-            '--no-sandbox',
-            '--disable-gpu',
-            '--ignore-certificate-errors',
-            f"--proxy-server={os.environ.get('http_proxy', '')}"
-        ]
-    )
-    page = await browser.newPage()
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36')
+    proxies = PROXIES or [os.environ.get('http_proxy', '')]
     downloaded_any = False
 
     for idx, row in df[df['Downloaded'] == 0].iterrows():
@@ -148,6 +143,24 @@ async def download_images_pyppeteer(df):
         print(f"→ Processing {sw}: {link}")
         folder = os.path.join(image_root, sw)
         os.makedirs(folder, exist_ok=True)
+
+        proxy = proxies[proxy_index % len(proxies)] if proxies else ''
+        proxy_index += 1
+        launch_args = [
+            '--no-sandbox',
+            '--disable-gpu',
+            '--ignore-certificate-errors',
+        ]
+        if proxy:
+            launch_args.append(f'--proxy-server={proxy}')
+
+        browser = await launch(
+            executablePath=exec_path,
+            headless=True,
+            args=launch_args,
+        )
+        page = await browser.newPage()
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36')
 
         urls = await extract_images_for_item(page, link, sw)
         saved = 0
@@ -169,9 +182,10 @@ async def download_images_pyppeteer(df):
             print(f"  → {sw}: no images found.")
 
         if downloaded_any:
+            await browser.close()
             break
 
-    await browser.close()
+        await browser.close()
 
 # ----------------------------------------
 # Main
